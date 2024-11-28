@@ -1,0 +1,64 @@
+import pandas as pd
+
+def calculate_match_percentage(str1, str2):
+    if pd.isna(str1) or pd.isna(str2):
+        return 0
+    str1 = str(str1).lower()[:3]
+    str2 = str(str2).lower()[:3]
+    if not (str1 and str2):
+        return 0
+    matches = sum(c1 == c2 for c1, c2 in zip(str1, min(str2, str1, key=len)))
+    return matches / max(len(str1), len(str2))
+
+def analyze_logins(df):
+    # Convert empid to string at dataframe level
+    df['empid'] = df['empid'].astype(str)
+    df['devLogin'] = df['devLogin'].astype(str)
+    df['uatLogin'] = df['uatLogin'].astype(str)
+    
+    full_matches = []
+    partial_matches = []
+    no_matches = []
+    
+    for emp_id, emp_group in df.groupby('empid'):
+        dev_logins = set(emp_group['devLogin'].dropna())
+        employee_uat_logins = set(df[df['empid'] == emp_id]['uatLogin'].dropna())
+        
+        for dev_login in dev_logins:
+            if not employee_uat_logins:
+                no_matches.append({
+                    'empid': emp_id,
+                    'devLogin': dev_login,
+                    'match_status': "No Match",
+                    'match_percentage': 0
+                })
+                continue
+            
+            match_percentages = [(uat_login, calculate_match_percentage(dev_login, uat_login)) 
+                               for uat_login in employee_uat_logins]
+            
+            best_match, max_match = max(match_percentages, key=lambda x: x[1])
+            
+            result = {
+                'empid': emp_id,
+                'devLogin': dev_login,
+                'matching_uatLogin': best_match,
+                'match_percentage': round(max_match * 100, 2)
+            }
+            
+            if max_match == 1:
+                full_matches.append(result | {'match_status': "Exact Match"})
+            elif max_match > 0.5:
+                partial_matches.append(result | {'match_status': "Partial Match"})
+            else:
+                no_matches.append({
+                    'empid': emp_id,
+                    'devLogin': dev_login,
+                    'match_status': "No Match",
+                    'matching_uatLogin': best_match,
+                    'match_percentage': round(max_match * 100, 2)
+                })
+    
+    return (pd.DataFrame(full_matches) if full_matches else pd.DataFrame(),
+            pd.DataFrame(partial_matches) if partial_matches else pd.DataFrame(),
+            pd.DataFrame(no_matches) if no_matches else pd.DataFrame())
